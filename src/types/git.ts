@@ -96,6 +96,7 @@ export interface ElectronAPI {
 
     // Commit operations
     commit: (message: string) => Promise<ApiResponse>;
+    commitAmend: (message?: string) => Promise<ApiResponse>;
 
     // Remote operations
     pull: () => Promise<ApiResponse>;

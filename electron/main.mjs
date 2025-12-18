@@ -181,6 +181,23 @@ const registerIpcHandlers = () => {
         }
     });
 
+    ipcMain.handle('git:commitAmend', async (_, message) => {
+        if (!git) return { success: false, error: 'No repository opened' };
+        try {
+            let result;
+            if (message && message.trim()) {
+                // Amend with new message
+                result = await git.raw(['commit', '--amend', '-m', message]);
+            } else {
+                // Amend keeping current message
+                result = await git.raw(['commit', '--amend', '--no-edit']);
+            }
+            return { success: true, data: result };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
     ipcMain.handle('git:pull', async () => {
         if (!git) return { success: false, error: 'No repository opened' };
         try {

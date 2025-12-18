@@ -146,6 +146,7 @@ index abc123..def456 100644
   stage: async (): Promise<ApiResponse> => ({ success: true, error: undefined }),
   unstage: async (): Promise<ApiResponse> => ({ success: true, error: undefined }),
   commit: async (): Promise<ApiResponse> => ({ success: true, error: undefined }),
+  commitAmend: async (): Promise<ApiResponse> => ({ success: true, error: undefined }),
   pull: async (): Promise<ApiResponse> => ({ success: true, error: undefined }),
   push: async (): Promise<ApiResponse> => ({ success: true, error: undefined }),
   fetch: async (): Promise<ApiResponse> => ({ success: true, error: undefined }),
@@ -201,6 +202,9 @@ function App() {
   const [configUserName, setConfigUserName] = useState('');
   const [configUserEmail, setConfigUserEmail] = useState('');
   const [configScope, setConfigScope] = useState<'local' | 'global'>('local');
+
+  // Amend commit state
+  const [amendCommit, setAmendCommit] = useState(false);
 
   const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -365,21 +369,29 @@ function App() {
   }, [status, loadRepoData, showToast]);
 
   const handleCommit = useCallback(async () => {
-    if (!commitMessage.trim()) {
+    if (!amendCommit && !commitMessage.trim()) {
       showToast('Please enter a commit message', 'warning');
       return;
     }
     setLoading(true);
-    const result = await api.commit(commitMessage);
+
+    let result;
+    if (amendCommit) {
+      result = await api.commitAmend(commitMessage.trim() || undefined);
+    } else {
+      result = await api.commit(commitMessage);
+    }
+
     if (result.success) {
       setCommitMessage('');
+      setAmendCommit(false);
       await loadRepoData();
-      showToast('Commit successful!');
+      showToast(amendCommit ? 'Commit amended!' : 'Commit successful!');
     } else {
       showToast(result.error || 'Commit failed', 'error');
     }
     setLoading(false);
-  }, [commitMessage, loadRepoData, showToast]);
+  }, [commitMessage, amendCommit, loadRepoData, showToast]);
 
   const handleCommitAndPush = useCallback(async () => {
     if (!commitMessage.trim()) {
@@ -388,8 +400,13 @@ function App() {
     }
     setLoading(true);
 
-    // First commit
-    const commitResult = await api.commit(commitMessage);
+    // First commit (or amend)
+    let commitResult;
+    if (amendCommit) {
+      commitResult = await api.commitAmend(commitMessage.trim() || undefined);
+    } else {
+      commitResult = await api.commit(commitMessage);
+    }
     if (!commitResult.success) {
       showToast(commitResult.error || 'Commit failed', 'error');
       setLoading(false);
@@ -400,16 +417,18 @@ function App() {
     const pushResult = await api.push();
     if (pushResult.success) {
       setCommitMessage('');
+      setAmendCommit(false);
       await loadRepoData();
-      showToast('Commit & Push successful!');
+      showToast(amendCommit ? 'Amend & Push successful!' : 'Commit & Push successful!');
     } else {
       // Commit succeeded but push failed
       setCommitMessage('');
+      setAmendCommit(false);
       await loadRepoData();
       showToast(pushResult.error || 'Commit succeeded but push failed', 'warning');
     }
     setLoading(false);
-  }, [commitMessage, loadRepoData, showToast]);
+  }, [commitMessage, amendCommit, loadRepoData, showToast]);
 
   const handleCheckout = useCallback(async (branch: string) => {
     setLoading(true);
@@ -871,24 +890,32 @@ function App() {
                   <div className="commit-panel">
                     <textarea
                       className="commit-panel__textarea"
-                      placeholder="Commit message..."
+                      placeholder={amendCommit ? "New commit message (leave empty to keep current)..." : "Commit message..."}
                       value={commitMessage}
                       onChange={(e) => setCommitMessage(e.target.value)}
                     />
+                    <label className="commit-panel__amend">
+                      <input
+                        type="checkbox"
+                        checked={amendCommit}
+                        onChange={(e) => setAmendCommit(e.target.checked)}
+                      />
+                      <span>Amend last commit</span>
+                    </label>
                     <div className="commit-panel__actions">
                       <button
                         className="commit-btn"
                         onClick={handleCommit}
-                        disabled={loading || !commitMessage.trim() || getStagedFiles().length === 0}
+                        disabled={loading || (!amendCommit && !commitMessage.trim()) || (!amendCommit && getStagedFiles().length === 0)}
                       >
-                        Commit
+                        {amendCommit ? 'Amend' : 'Commit'}
                       </button>
                       <button
                         className="commit-btn commit-btn--push"
                         onClick={handleCommitAndPush}
-                        disabled={loading || !commitMessage.trim() || getStagedFiles().length === 0}
+                        disabled={loading || (!amendCommit && !commitMessage.trim()) || (!amendCommit && getStagedFiles().length === 0)}
                       >
-                        Commit & Push
+                        {amendCommit ? 'Amend & Push' : 'Commit & Push'}
                       </button>
                     </div>
                   </div>

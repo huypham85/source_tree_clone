@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Commit operations
     commit: (message) => ipcRenderer.invoke('git:commit', message),
+    commitAmend: (message) => ipcRenderer.invoke('git:commitAmend', message),
 
     // Remote operations
     pull: () => ipcRenderer.invoke('git:pull'),
