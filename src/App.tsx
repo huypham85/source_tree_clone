@@ -24,7 +24,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import './App.css';
-import type { GitStatus, GitLogEntry, RepoInfo, GitBranch as GitBranchType, ApiResponse } from './types/git';
+import type { GitStatus, RepoInfo, GitBranch as GitBranchType, ApiResponse } from './types/git';
 
 // Mock API for development (when not running in Electron)
 const isMockMode = typeof window.electronAPI === 'undefined';
@@ -162,6 +162,13 @@ index abc123..def456 100644
     }
   }),
   setConfig: async (): Promise<ApiResponse> => ({ success: true, error: undefined }),
+  getLogWithGraph: async (): Promise<ApiResponse> => ({
+    success: true,
+    data: {
+      logOutput: '', // Mock raw log
+      branches: { current: 'main', all: [], branches: {} }
+    }
+  }),
 };
 
 const api = isMockMode ? mockAPI : window.electronAPI;
@@ -174,10 +181,168 @@ interface Toast {
   type: 'success' | 'error' | 'warning';
 }
 
+interface CommitNode {
+  hash: string;
+  parents: string[];
+  author_name: string;
+  author_email: string;
+  date: string;
+  message: string;
+  refs: string;
+  // Layout properties
+  x: number; // Column index (0-based)
+  y: number; // Row index (0-based)
+  color: string;
+}
+
+
+
+const BRANCH_COLORS = [
+  '#00b8d4', // Cyan
+  '#ad1457', // Pink
+  '#00695c', // Teal
+  '#ff8f00', // Amber
+  '#6a1b9a', // Purple
+  '#1565c0', // Blue
+  '#2e7d32', // Green
+  '#c62828', // Red
+];
+
+// Helper to parse raw git log line
+const parseLogLine = (line: string): CommitNode | null => {
+  if (!line.trim()) return null;
+  const parts = line.split('|');
+  if (parts.length < 7) return null;
+
+  // Format: %H|%P|%an|%ae|%cI|%d|%s
+  const [hash, parentsStr, author_name, author_email, date, refs, ...messageParts] = parts;
+  const message = messageParts.join('|'); // Rejoin message if it had pipes
+
+  return {
+    hash,
+    parents: parentsStr ? parentsStr.split(' ') : [],
+    author_name,
+    author_email,
+    date,
+    message,
+    refs: refs.trim(),
+    x: 0,
+    y: 0,
+    color: '#999'
+  };
+};
+
+const processGraphLayout = (nodes: CommitNode[]): CommitNode[] => {
+  // Sort by date desc (should already be sorted by git log, but ensure it)
+  // We assume input is already sorted for now as re-sorting might break topological order assumptions
+
+  const slots: (string | null)[] = []; // Tracks active branch tips in each column (hash)
+  const colors: (string | null)[] = []; // Tracks color for each column
+
+  const processedNodes = nodes.map((node, index) => {
+    node.y = index;
+
+    // Find if any parent is in a slot (continuing a branch)
+    // The node "occupies" the slot of its first parent usually
+    // Or if it's a child of a previous node
+
+    // Simplistic approach similar to git-graph:
+    // 1. Identify existing slot for this commit (if it was a parent of a previous commit)
+    // 2. If it's a merge, it might connect to multiple slots
+
+    // Current approach:
+    // Check if this node is expected by any currently open slot
+    let existingSlotIndex = slots.indexOf(node.hash);
+
+    // If not found, maybe it's a new branch tip (or a root)
+    if (existingSlotIndex === -1) {
+      // Find empty slot
+      existingSlotIndex = slots.findIndex(s => s === null);
+      if (existingSlotIndex === -1) {
+        existingSlotIndex = slots.length;
+        slots.push(null);
+        colors.push(null);
+      }
+    }
+
+    // Assign x and color
+    node.x = existingSlotIndex;
+
+    // Assign color if not exists
+    if (!colors[existingSlotIndex]) {
+      colors[existingSlotIndex] = BRANCH_COLORS[existingSlotIndex % BRANCH_COLORS.length];
+    }
+    node.color = colors[existingSlotIndex] || '#999';
+
+    // Update slots for parents
+    // 1. Clear current slot
+    slots[existingSlotIndex] = null;
+
+    // 2. Assign parents to slots
+    if (node.parents.length > 0) {
+      // First parent takes the current slot (straight line usually)
+      const firstParent = node.parents[0];
+
+      // Check if first parent already has a slot assigned (merge target?)
+      const firstParentSlot = slots.indexOf(firstParent);
+
+      if (firstParentSlot !== -1) {
+        // Parent already has a slot elsewhere, this is a merge into that branch? 
+        // Or that branch merged into us? 
+        // For simplicity, we just point to it.
+        // We don't occupy current slot with it.
+      } else {
+        slots[existingSlotIndex] = firstParent;
+        // Keep color
+      }
+
+      // Other parents (merge sources) need their own slots if they don't have one
+      for (let i = 1; i < node.parents.length; i++) {
+        const parent = node.parents[i];
+        let parentSlot = slots.indexOf(parent);
+        if (parentSlot === -1) {
+          // Assign new slot
+          let empty = slots.findIndex(s => s === null);
+          if (empty === -1) {
+            empty = slots.length;
+            slots.push(null);
+            colors.push(null);
+          }
+          slots[empty] = parent;
+          // Assign new color for the merged-in branch
+          if (!colors[empty]) {
+            colors[empty] = BRANCH_COLORS[empty % BRANCH_COLORS.length];
+          }
+        }
+      }
+    }
+
+    return node;
+  });
+
+  return processedNodes;
+  return processedNodes;
+};
+
+const processGraphData = (logOutput: string): CommitNode[] => {
+  const lines = logOutput.split('\n');
+  const nodes: CommitNode[] = [];
+
+  lines.forEach(line => {
+    const node = parseLogLine(line);
+    if (node) nodes.push(node);
+  });
+
+  return processGraphLayout(nodes);
+};
+
 function App() {
   const [repoInfo, setRepoInfo] = useState<RepoInfo | null>(null);
   const [branches, setBranches] = useState<GitBranchType | null>(null);
-  const [logs, setLogs] = useState<GitLogEntry[]>([]);
+
+  const [graphNodes, setGraphNodes] = useState<CommitNode[]>([]);
+  // We keep logs for backward compatibility if needed, but graphNodes is primary for tree
+  // const [logs, setLogs] = useState<GitLogEntry[]>([]); 
   const [status, setStatus] = useState<GitStatus | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [diff, setDiff] = useState<string>('');
@@ -189,13 +354,15 @@ function App() {
   const [selectedCommit, setSelectedCommit] = useState<string | null>(null);
   const [commitFiles, setCommitFiles] = useState<Array<{ status: string, path: string }>>([]);
 
-  // Panel widths for resizable panels
-  const [sidebarWidth, setSidebarWidth] = useState(280);
-  const [changesPanelWidth, setChangesPanelWidth] = useState(350);
 
-  // Refs for resize handling
+
+  // Resize state
   const isResizingSidebar = useRef(false);
   const isResizingChanges = useRef(false);
+  const isResizingBranches = useRef(false);
+  const [sidebarWidth, setSidebarWidth] = useState(250);
+  const [changesPanelWidth, setChangesPanelWidth] = useState(300);
+  const [branchesHeight, setBranchesHeight] = useState(200);
 
   // Settings modal state
   const [showSettings, setShowSettings] = useState(false);
@@ -205,6 +372,10 @@ function App() {
 
   // Amend commit state
   const [amendCommit, setAmendCommit] = useState(false);
+
+  // Checkout confirmation state
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+  const [checkoutTarget, setCheckoutTarget] = useState<string | null>(null);
 
   const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -217,24 +388,35 @@ function App() {
   }, []);
 
   const loadRepoData = useCallback(async () => {
-    const [repoResult, branchResult, logResult, statusResult] = await Promise.all([
+    // Parallel fetch for info, status (branches come with log now or parallel)
+    // We can still fetch branches separately or trust graph log. 
+    // Let's fetch separately to be safe or just use what we have.
+    // Actually main.mjs getLogWithGraph returns branches too.
+
+    const [repoResult, statusResult, logResult] = await Promise.all([
       api.getRepoInfo(),
-      api.getBranches(),
-      api.getLog(50),
       api.getStatus(),
+      api.getLogWithGraph(100),
     ]);
 
     if (repoResult.success && repoResult.data) {
       setRepoInfo(repoResult.data);
     }
-    if (branchResult.success && branchResult.data) {
-      setBranches(branchResult.data);
-    }
-    if (logResult.success && logResult.data) {
-      setLogs(logResult.data.all);
-    }
+
     if (statusResult.success && statusResult.data) {
       setStatus(statusResult.data);
+    }
+
+    if (logResult.success && logResult.data) {
+      if (logResult.data.logOutput) {
+        const nodes = processGraphData(logResult.data.logOutput);
+        setGraphNodes(nodes);
+      }
+
+      // Also update branches if provided alongside log (optimization)
+      if (logResult.data.branches) {
+        setBranches(logResult.data.branches);
+      }
     }
   }, []);
 
@@ -430,17 +612,27 @@ function App() {
     setLoading(false);
   }, [commitMessage, amendCommit, loadRepoData, showToast]);
 
-  const handleCheckout = useCallback(async (branch: string) => {
+  const handleCheckout = useCallback((branch: string) => {
+    setCheckoutTarget(branch);
+    setShowCheckoutModal(true);
+  }, []);
+
+  const handleConfirmCheckout = useCallback(async () => {
+    if (!checkoutTarget) return;
+
     setLoading(true);
-    const result = await api.checkout(branch);
+    setShowCheckoutModal(false);
+
+    const result = await api.checkout(checkoutTarget);
     if (result.success) {
       await loadRepoData();
-      showToast(`Switched to ${branch}`);
+      showToast(`Switched to ${checkoutTarget}`);
     } else {
       showToast(result.error || 'Checkout failed', 'error');
     }
     setLoading(false);
-  }, [loadRepoData, showToast]);
+    setCheckoutTarget(null);
+  }, [checkoutTarget, loadRepoData, showToast]);
 
   const handleStash = useCallback(async () => {
     setLoading(true);
@@ -565,11 +757,40 @@ function App() {
       const newWidth = Math.max(250, Math.min(600, e.clientX - sidebarWidth));
       setChangesPanelWidth(newWidth);
     }
+    if (isResizingBranches.current) {
+      // Branch resize is vertical relative to sidebar header (approx 60px)
+      const headerHeight = 60;
+      const newHeight = Math.max(100, Math.min(500, e.clientY - headerHeight));
+      setBranchesHeight(newHeight);
+    }
   }, [sidebarWidth]);
+
+  const startResizeSidebar = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizingSidebar.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  const startResizeChanges = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizingChanges.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  const startResizeBranches = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isResizingBranches.current = true;
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
 
   const handleMouseUp = useCallback(() => {
     isResizingSidebar.current = false;
     isResizingChanges.current = false;
+    isResizingBranches.current = false;
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
   }, []);
@@ -583,17 +804,7 @@ function App() {
     };
   }, [handleMouseMove, handleMouseUp]);
 
-  const startResizeSidebar = useCallback(() => {
-    isResizingSidebar.current = true;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-  }, []);
 
-  const startResizeChanges = useCallback(() => {
-    isResizingChanges.current = true;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-  }, []);
 
   const getFileIcon = (status: string) => {
     switch (status) {
@@ -710,26 +921,126 @@ function App() {
           </div>
 
           {/* Branches */}
-          <div className="sidebar__content">
-            <div className="sidebar__title" onClick={() => setBranchesExpanded(!branchesExpanded)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-              {branchesExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              Branches
+          <div className="sidebar__content" style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+            {/* Branches Section */}
+            <div className="sidebar__section" style={{ height: branchesHeight, minHeight: 100, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <div className="sidebar__title" onClick={() => setBranchesExpanded(!branchesExpanded)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                {branchesExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                Branches
+              </div>
+              {branchesExpanded && branches && (
+                <ul className="branch-list" style={{ flex: 1, overflowY: 'auto' }}>
+                  {branches.all.map(branchName => (
+                    <li
+                      key={branchName}
+                      className={`branch-item ${branchName === branches.current ? 'branch-item--active' : ''}`}
+                      onClick={() => branchName !== branches.current && handleCheckout(branchName)}
+                    >
+                      <GitBranch size={16} />
+                      <span>{branchName}</span>
+                      {branchName === branches.current && <Check size={14} style={{ marginLeft: 'auto' }} />}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-            {branchesExpanded && branches && (
-              <ul className="branch-list">
-                {branches.all.map(branchName => (
-                  <li
-                    key={branchName}
-                    className={`branch-item ${branchName === branches.current ? 'branch-item--active' : ''}`}
-                    onClick={() => branchName !== branches.current && handleCheckout(branchName)}
-                  >
-                    <GitBranch size={16} />
-                    <span>{branchName}</span>
-                    {branchName === branches.current && <Check size={14} style={{ marginLeft: 'auto' }} />}
-                  </li>
-                ))}
-              </ul>
-            )}
+
+            {/* Resize Handle */}
+            <div
+              className="resize-handle resize-handle--horizontal"
+              onMouseDown={startResizeBranches}
+            />
+
+            {/* Git Graph Section */}
+            <div className="sidebar__section sidebar__graph" style={{ flex: 1, overflow: 'auto', borderTop: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column' }}>
+              <div className="sidebar__title" style={{ position: 'sticky', top: 0, background: 'var(--bg-secondary)', zIndex: 1, padding: '8px', borderBottom: '1px solid var(--border-color)' }}>
+                Graph
+              </div>
+              <div className="git-graph">
+                {graphNodes.map((node, index) => {
+                  return (
+                    <div
+                      key={node.hash}
+                      className={`git-graph__row ${selectedCommit === node.hash ? 'git-graph__row--selected' : ''}`}
+                      onClick={() => handleCommitSelect(node.hash)}
+                      style={{ zIndex: graphNodes.length - index }}
+                    >
+                      {/* Graph node */}
+                      <div className="git-graph__node" style={{ width: (Math.max(node.x + 1, 2) * 20) + 20 }}>
+                        <svg width="100%" height="48" style={{ overflow: 'visible' }}>
+                          {/* Render connection lines from this node to parents */}
+                          {node.parents.map(parentHash => {
+                            const parentNode = graphNodes.find(n => n.hash === parentHash);
+                            if (!parentNode) return null;
+
+                            // If parent is visible (in current list)
+                            // Calculate path
+                            const startX = 12 + (node.x * 20);
+                            const startY = 24; // Center of current row
+
+                            const endX = 12 + (parentNode.x * 20);
+                            // Calculate Y distance. If parent is next row, diff is 48.
+                            const rowDiff = parentNode.y - node.y;
+                            const endY = 24 + (rowDiff * 48);
+
+                            // Bezier curve
+                            const controlY = startY + 24;
+
+                            return (
+                              <path
+                                key={`${node.hash}-${parentHash}`}
+                                d={`M ${startX} ${startY} C ${startX} ${controlY}, ${endX} ${controlY}, ${endX} ${endY}`}
+                                stroke={node.color}
+                                strokeWidth="2"
+                                fill="none"
+                              />
+                            );
+                          })}
+
+                          {/* Render circle for this commit */}
+                          <circle
+                            cx={12 + (node.x * 20)}
+                            cy="24"
+                            r="5"
+                            fill={node.color}
+                            stroke="var(--bg-primary)"
+                            strokeWidth="2"
+                          />
+                        </svg>
+                      </div>
+                      {/* Commit info */}
+                      <div className="git-graph__info">
+                        <div className="git-graph__message" title={node.message}>{node.message}</div>
+                        <div className="git-graph__meta">
+                          <span style={{ fontFamily: 'monospace' }}>{node.hash.substring(0, 7)}</span>
+                          <span>·</span>
+                          <span>{node.author_name}</span>
+                          <span>·</span>
+                          <span>{new Date(node.date).toLocaleDateString()}</span>
+                        </div>
+                        {node.refs && (
+                          <div className="git-graph__refs">
+                            {node.refs.split(',').map(ref => {
+                              const trimmedRef = ref.trim();
+                              if (!trimmedRef) return null;
+                              const isHead = trimmedRef.includes('HEAD');
+                              const isRemote = trimmedRef.includes('origin/');
+                              const className = `git-graph__ref ${isHead ? 'git-graph__ref--head' : isRemote ? 'git-graph__ref--remote' : ''}`;
+                              const label = trimmedRef.replace('HEAD -> ', '').replace('origin/', '');
+                              return (
+                                <span key={trimmedRef} className={className}>
+                                  {label}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </aside>
 
@@ -812,7 +1123,7 @@ function App() {
                 </button>
               </div>
 
-              {activeTab === 'changes' ? (
+              {activeTab === 'changes' && (
                 <>
                   {/* Staged Files */}
                   <div className="changes-section">
@@ -920,18 +1231,19 @@ function App() {
                     </div>
                   </div>
                 </>
-              ) : (
-                /* History Tab */
+              )}
+
+              {activeTab === 'history' && (
                 <div className="history-list">
-                  {logs.map((commit, index) => (
+                  {graphNodes.map((commit, index) => (
                     <div
                       key={commit.hash}
                       className={`commit-item ${selectedCommit === commit.hash ? 'commit-item--selected' : ''}`}
                       onClick={() => handleCommitSelect(commit.hash)}
                     >
                       <div className="commit-item__graph">
-                        <div className="commit-item__dot" />
-                        {index < logs.length - 1 && <div className="commit-item__line" />}
+                        <div className="commit-item__dot" style={{ backgroundColor: commit.color }} />
+                        {index < graphNodes.length - 1 && <div className="commit-item__line" />}
                       </div>
                       <div className="commit-item__content">
                         <div className="commit-item__message">{commit.message}</div>
@@ -966,8 +1278,10 @@ function App() {
                 </div>
               )}
 
+
+
               {/* Commit Files Panel - shown when a commit is selected */}
-              {activeTab === 'history' && selectedCommit && commitFiles.length > 0 && (
+              {(activeTab === 'history') && selectedCommit && commitFiles.length > 0 && (
                 <div className="changes-section" style={{ borderTop: '1px solid var(--border-color)', marginTop: 'auto' }}>
                   <div className="changes-section__header">
                     <span>Files Changed</span>
@@ -1074,6 +1388,28 @@ function App() {
               <button className="btn btn--primary" onClick={handleSaveConfig}>
                 Save
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Checkout Confirmation Modal */}
+      {showCheckoutModal && checkoutTarget && (
+        <div className="modal-overlay">
+          <div className="modal modal--confirm">
+            <div className="modal__header">
+              <h2>Confirm Checkout</h2>
+              <button className="modal__close" onClick={() => setShowCheckoutModal(false)}><X size={18} /></button>
+            </div>
+            <div className="modal__content">
+              <p>Are you sure you want to switch to branch <strong>{checkoutTarget}</strong>?</p>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '8px' }}>
+                Any uncommitted changes may move with you or prevent checkout.
+              </p>
+            </div>
+            <div className="modal__footer">
+              <button className="btn btn--secondary" onClick={() => setShowCheckoutModal(false)}>Cancel</button>
+              <button className="btn btn--primary" onClick={handleConfirmCheckout}>Checkout</button>
             </div>
           </div>
         </div>

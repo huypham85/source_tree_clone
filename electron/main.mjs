@@ -109,6 +109,29 @@ const registerIpcHandlers = () => {
         }
     });
 
+    ipcMain.handle('git:getLogWithGraph', async (_, count = 100) => {
+        if (!git) return { success: false, error: 'No repository opened' };
+        try {
+            // Get log with custom format for graph parsing
+            // %H: Hash, %P: Parents, %an: Author Name, %ae: Author Email, %cI: Date ISO, %d: Refs, %s: Subject
+            const customFormat = '%H|%P|%an|%ae|%cI|%d|%s';
+            const logOutput = await git.raw(['log', '--all', `-n ${count}`, `--format=${customFormat}`]);
+
+            // Get all branches
+            const branches = await git.branch(['-a', '-v']);
+
+            return {
+                success: true,
+                data: {
+                    logOutput,
+                    branches: serialize(branches)
+                }
+            };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
     ipcMain.handle('git:getDiff', async (_, file) => {
         if (!git) return { success: false, error: 'No repository opened' };
         try {

@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getStatus: () => ipcRenderer.invoke('git:getStatus'),
     getBranches: () => ipcRenderer.invoke('git:getBranches'),
     getLog: (count) => ipcRenderer.invoke('git:getLog', count),
+    getLogWithGraph: (count) => ipcRenderer.invoke('git:getLogWithGraph', count),
     getDiff: (file) => ipcRenderer.invoke('git:getDiff', file),
     getRemotes: () => ipcRenderer.invoke('git:getRemotes'),
     getCurrentBranch: () => ipcRenderer.invoke('git:getCurrentBranch'),

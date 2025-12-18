@@ -84,6 +84,7 @@ export interface ElectronAPI {
     getStatus: () => Promise<ApiResponse<GitStatus>>;
     getBranches: () => Promise<ApiResponse<GitBranch>>;
     getLog: (count?: number) => Promise<ApiResponse<GitLog>>;
+    getLogWithGraph: (count?: number) => Promise<ApiResponse<{ logOutput: string, branches: GitBranch }>>;
     getDiff: (file?: string) => Promise<ApiResponse<string>>;
     getRemotes: () => Promise<ApiResponse<GitRemote[]>>;
     getCurrentBranch: () => Promise<ApiResponse<string>>;
