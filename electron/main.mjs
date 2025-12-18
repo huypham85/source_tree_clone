@@ -112,8 +112,40 @@ const registerIpcHandlers = () => {
     ipcMain.handle('git:getDiff', async (_, file) => {
         if (!git) return { success: false, error: 'No repository opened' };
         try {
-            const diff = file ? await git.diff([file]) : await git.diff();
-            return { success: true, data: diff };
+            if (file) {
+                // Try to get diff for the specific file
+                // First try unstaged changes
+                let diff = await git.diff([file]);
+
+                // If no unstaged diff, try staged changes
+                if (!diff || diff.trim() === '') {
+                    diff = await git.diff(['--cached', file]);
+                }
+
+                // If still no diff, the file might be untracked - show full content
+                if (!diff || diff.trim() === '') {
+                    const status = await git.status();
+                    const isUntracked = status.not_added.includes(file) ||
+                        status.files.some(f => f.path === file && f.working_dir === '?');
+                    if (isUntracked) {
+                        // For untracked files, read the file content
+                        const fs = await import('fs/promises');
+                        const filePath = path.join(currentRepoPath, file);
+                        try {
+                            const content = await fs.readFile(filePath, 'utf-8');
+                            diff = `New file: ${file}\n\n${content.split('\n').map((line, i) => `+${line}`).join('\n')}`;
+                        } catch (e) {
+                            diff = `Unable to read file: ${file}`;
+                        }
+                    }
+                }
+
+                return { success: true, data: diff };
+            } else {
+                // Get all diffs
+                const diff = await git.diff();
+                return { success: true, data: diff };
+            }
         } catch (error) {
             return { success: false, error: error.message };
         }

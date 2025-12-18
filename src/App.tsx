@@ -233,6 +233,12 @@ function App() {
       const openResult = await api.openRepository(path);
 
       if (openResult.success) {
+        // Reset state from previous repository
+        setSelectedCommit(null);
+        setCommitFiles([]);
+        setDiff('');
+        setSelectedFile(null);
+
         await loadRepoData();
         showToast('Repository opened successfully!');
       } else {
