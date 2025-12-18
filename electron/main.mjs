@@ -366,6 +366,47 @@ const registerIpcHandlers = () => {
             return { success: false, error: error.message };
         }
     });
+
+    // Git Config handlers
+    ipcMain.handle('git:getConfig', async () => {
+        if (!git) return { success: false, error: 'No repository opened' };
+        try {
+            const userName = await git.raw(['config', '--local', 'user.name']).catch(() => '');
+            const userEmail = await git.raw(['config', '--local', 'user.email']).catch(() => '');
+
+            // Also get global config as fallback
+            const globalName = await git.raw(['config', '--global', 'user.name']).catch(() => '');
+            const globalEmail = await git.raw(['config', '--global', 'user.email']).catch(() => '');
+
+            return {
+                success: true,
+                data: {
+                    local: {
+                        userName: userName.trim(),
+                        userEmail: userEmail.trim(),
+                    },
+                    global: {
+                        userName: globalName.trim(),
+                        userEmail: globalEmail.trim(),
+                    },
+                },
+            };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('git:setConfig', async (_, key, value, isGlobal = false) => {
+        if (!git && !isGlobal) return { success: false, error: 'No repository opened' };
+        try {
+            const scope = isGlobal ? '--global' : '--local';
+            const gitInstance = isGlobal ? simpleGit() : git;
+            await gitInstance.raw(['config', scope, key, value]);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
 };
 
 app.whenReady().then(() => {

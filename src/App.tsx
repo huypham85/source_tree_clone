@@ -153,6 +153,14 @@ index abc123..def456 100644
   createBranch: async (): Promise<ApiResponse> => ({ success: true, error: undefined }),
   stash: async (): Promise<ApiResponse> => ({ success: true, error: undefined }),
   stashPop: async (): Promise<ApiResponse> => ({ success: true, error: undefined }),
+  getConfig: async (): Promise<ApiResponse> => ({
+    success: true,
+    data: {
+      local: { userName: 'Local User', userEmail: 'local@example.com' },
+      global: { userName: 'Global User', userEmail: 'global@example.com' },
+    }
+  }),
+  setConfig: async (): Promise<ApiResponse> => ({ success: true, error: undefined }),
 };
 
 const api = isMockMode ? mockAPI : window.electronAPI;
@@ -187,6 +195,12 @@ function App() {
   // Refs for resize handling
   const isResizingSidebar = useRef(false);
   const isResizingChanges = useRef(false);
+
+  // Settings modal state
+  const [showSettings, setShowSettings] = useState(false);
+  const [configUserName, setConfigUserName] = useState('');
+  const [configUserEmail, setConfigUserEmail] = useState('');
+  const [configScope, setConfigScope] = useState<'local' | 'global'>('local');
 
   const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -314,6 +328,42 @@ function App() {
     }
   }, [loadRepoData, showToast]);
 
+  const handleStageAll = useCallback(async () => {
+    if (!status) {
+      showToast('No repository loaded', 'warning');
+      return;
+    }
+    // Use '.' to stage all changes
+    const result = await api.stage('.');
+    if (result.success) {
+      await loadRepoData();
+      showToast('All files staged');
+    } else {
+      showToast(result.error || 'Failed to stage files', 'error');
+    }
+  }, [status, loadRepoData, showToast]);
+
+  const handleUnstageAll = useCallback(async () => {
+    if (!status) {
+      showToast('No repository loaded', 'warning');
+      return;
+    }
+    const stagedFiles = status.files.filter(f => f.index !== ' ' && f.index !== '?');
+
+    if (stagedFiles.length === 0) {
+      showToast('No files to unstage', 'warning');
+      return;
+    }
+    const filePaths = stagedFiles.map(f => f.path);
+    const result = await api.unstage(filePaths);
+    if (result.success) {
+      await loadRepoData();
+      showToast(`Unstaged ${filePaths.length} files`);
+    } else {
+      showToast(result.error || 'Failed to unstage files', 'error');
+    }
+  }, [status, loadRepoData, showToast]);
+
   const handleCommit = useCallback(async () => {
     if (!commitMessage.trim()) {
       showToast('Please enter a commit message', 'warning');
@@ -396,6 +446,41 @@ function App() {
       if (result.data.diff) {
         setDiff(result.data.diff);
       }
+    }
+  }, []);
+
+  // Settings handlers
+  const handleOpenSettings = useCallback(async () => {
+    const result = await api.getConfig();
+    if (result.success && result.data) {
+      const config = configScope === 'local' ? result.data.local : result.data.global;
+      setConfigUserName(config.userName || '');
+      setConfigUserEmail(config.userEmail || '');
+    }
+    setShowSettings(true);
+  }, [configScope]);
+
+  const handleSaveConfig = useCallback(async () => {
+    const isGlobal = configScope === 'global';
+
+    if (configUserName) {
+      await api.setConfig('user.name', configUserName, isGlobal);
+    }
+    if (configUserEmail) {
+      await api.setConfig('user.email', configUserEmail, isGlobal);
+    }
+
+    showToast(`Git config saved (${configScope})!`);
+    setShowSettings(false);
+  }, [configUserName, configUserEmail, configScope, showToast]);
+
+  const handleLoadConfigForScope = useCallback(async (scope: 'local' | 'global') => {
+    setConfigScope(scope);
+    const result = await api.getConfig();
+    if (result.success && result.data) {
+      const config = scope === 'local' ? result.data.local : result.data.global;
+      setConfigUserName(config.userName || '');
+      setConfigUserEmail(config.userEmail || '');
     }
   }, []);
 
@@ -652,7 +737,7 @@ function App() {
               <button className="toolbar-btn" title="Search">
                 <Search size={18} />
               </button>
-              <button className="toolbar-btn" title="Settings">
+              <button className="toolbar-btn" title="Settings" onClick={handleOpenSettings}>
                 <Settings size={18} />
               </button>
             </div>
@@ -684,7 +769,18 @@ function App() {
                   <div className="changes-section">
                     <div className="changes-section__header">
                       <span>Staged Changes</span>
-                      <span className="changes-panel__count">{getStagedFiles().length}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {getStagedFiles().length > 0 && (
+                          <button
+                            className="section-action-btn"
+                            onClick={handleUnstageAll}
+                            title="Unstage All"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                        <span className="changes-panel__count">{getStagedFiles().length}</span>
+                      </div>
                     </div>
                     {getStagedFiles().map(file => (
                       <div
@@ -709,7 +805,18 @@ function App() {
                   <div className="changes-section">
                     <div className="changes-section__header">
                       <span>Unstaged Changes</span>
-                      <span className="changes-panel__count">{getUnstagedFiles().length}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {getUnstagedFiles().length > 0 && (
+                          <button
+                            className="section-action-btn section-action-btn--add"
+                            onClick={handleStageAll}
+                            title="Stage All"
+                          >
+                            <Plus size={12} />
+                          </button>
+                        )}
+                        <span className="changes-panel__count">{getUnstagedFiles().length}</span>
+                      </div>
                     </div>
                     {getUnstagedFiles().map(file => (
                       <div
@@ -849,6 +956,64 @@ function App() {
           {toast.message}
         </div>
       ))}
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="modal-overlay" onClick={() => setShowSettings(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__header">
+              <h2>Git Configuration</h2>
+              <button className="modal__close" onClick={() => setShowSettings(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal__content">
+              <div className="modal__tabs">
+                <button
+                  className={`modal__tab ${configScope === 'local' ? 'modal__tab--active' : ''}`}
+                  onClick={() => handleLoadConfigForScope('local')}
+                >
+                  Local (This Repo)
+                </button>
+                <button
+                  className={`modal__tab ${configScope === 'global' ? 'modal__tab--active' : ''}`}
+                  onClick={() => handleLoadConfigForScope('global')}
+                >
+                  Global
+                </button>
+              </div>
+              <div className="modal__form">
+                <div className="form-group">
+                  <label>User Name</label>
+                  <input
+                    type="text"
+                    value={configUserName}
+                    onChange={(e) => setConfigUserName(e.target.value)}
+                    placeholder="Enter your name"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>User Email</label>
+                  <input
+                    type="email"
+                    value={configUserEmail}
+                    onChange={(e) => setConfigUserEmail(e.target.value)}
+                    placeholder="Enter your email"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="modal__footer">
+              <button className="btn btn--secondary" onClick={() => setShowSettings(false)}>
+                Cancel
+              </button>
+              <button className="btn btn--primary" onClick={handleSaveConfig}>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

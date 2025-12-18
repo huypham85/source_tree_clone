@@ -110,6 +110,13 @@ export interface ElectronAPI {
     // Stash operations
     stash: () => Promise<ApiResponse>;
     stashPop: () => Promise<ApiResponse>;
+
+    // Config operations
+    getConfig: () => Promise<ApiResponse<{
+        local: { userName: string; userEmail: string };
+        global: { userName: string; userEmail: string };
+    }>>;
+    setConfig: (key: string, value: string, isGlobal?: boolean) => Promise<ApiResponse>;
 }
 
 declare global {

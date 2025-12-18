@@ -38,4 +38,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Stash operations
     stash: () => ipcRenderer.invoke('git:stash'),
     stashPop: () => ipcRenderer.invoke('git:stashPop'),
+
+    // Config operations
+    getConfig: () => ipcRenderer.invoke('git:getConfig'),
+    setConfig: (key, value, isGlobal) => ipcRenderer.invoke('git:setConfig', key, value, isGlobal),
 });
