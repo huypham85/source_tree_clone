@@ -194,8 +194,23 @@ const registerIpcHandlers = () => {
     ipcMain.handle('git:push', async () => {
         if (!git) return { success: false, error: 'No repository opened' };
         try {
-            const result = await git.push();
-            return { success: true, data: serialize(result) };
+            // Get current branch
+            const branch = await git.revparse(['--abbrev-ref', 'HEAD']);
+            const currentBranch = branch.trim();
+
+            // Try regular push first
+            try {
+                const result = await git.push();
+                return { success: true, data: serialize(result) };
+            } catch (pushError) {
+                // If no upstream, set it and push again
+                if (pushError.message.includes('no upstream branch') ||
+                    pushError.message.includes('has no upstream')) {
+                    const result = await git.push(['--set-upstream', 'origin', currentBranch]);
+                    return { success: true, data: serialize(result) };
+                }
+                throw pushError;
+            }
         } catch (error) {
             return { success: false, error: error.message };
         }
