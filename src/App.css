@@ -1,0 +1,197 @@
+/* App-specific styles */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Spinning animation for refresh button */
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Improve file path display */
+.file-item__path-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Scrollable branch list */
+.branch-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* Better history list styling */
+.history-list {
+  padding: var(--spacing-xs);
+}
+
+/* Toast container positioning */
+.toast-container {
+  position: fixed;
+  bottom: var(--spacing-lg);
+  right: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  z-index: 1000;
+}
+
+/* Improved commit panel */
+.commit-panel {
+  margin-top: auto;
+}
+
+/* File item hover effects */
+.file-item {
+  position: relative;
+}
+
+.file-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: transparent;
+  transition: var(--transition-fast);
+}
+
+.file-item--selected::before {
+  background: var(--accent-blue);
+}
+
+/* Enhanced diff viewer */
+.diff-viewer {
+  background: var(--bg-primary);
+}
+
+.diff-viewer__content {
+  padding: var(--spacing-sm) 0;
+}
+
+.diff-line {
+  min-height: 24px;
+  align-items: center;
+}
+
+.diff-line:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Commit graph enhancements */
+.commit-item:first-child .commit-item__line {
+  height: calc(100% - 14px);
+  margin-top: 14px;
+}
+
+.commit-item:last-child .commit-item__line {
+  display: none;
+}
+
+/* Branch name truncation */
+.branch-item span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+/* Toolbar button active state */
+.toolbar-btn:active {
+  transform: scale(0.97);
+}
+
+/* Better scrollbar for sidebar */
+.sidebar__content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar__content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.sidebar__content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Changes panel scrolling */
+.changes-panel__content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.changes-section {
+  flex-shrink: 0;
+}
+
+/* Empty state improvements */
+.empty-state {
+  background: radial-gradient(circle at center, rgba(79, 143, 255, 0.05) 0%, transparent 70%);
+}
+
+/* Button focus states */
+.toolbar-btn:focus,
+.commit-btn:focus,
+.btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-blue-glow);
+}
+
+/* Textarea resize */
+.commit-panel__textarea {
+  min-height: 60px;
+  max-height: 150px;
+}
+
+/* Tag hover effects */
+.tag {
+  transition: var(--transition-fast);
+}
+
+.tag:hover {
+  transform: translateY(-1px);
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+  :root {
+    --sidebar-width: 240px;
+  }
+
+  .changes-panel {
+    width: 280px;
+  }
+}
+
+@media (max-width: 1000px) {
+  :root {
+    --sidebar-width: 200px;
+  }
+
+  .changes-panel {
+    width: 260px;
+  }
+
+  .toolbar-btn span {
+    display: none;
+  }
+}
