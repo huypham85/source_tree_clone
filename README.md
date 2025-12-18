@@ -1,8 +1,8 @@
-# GitFlow
+# GitForest
 
 <div align="center">
 
-![GitFlow Logo](public/icon.svg)
+![GitForest Logo](public/icon.svg)
 
 **A modern, cross-platform Git version control client built with Electron, React, and TypeScript.**
 
@@ -98,8 +98,8 @@
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/source_tree_clone.git
-   cd source_tree_clone
+   git clone https://github.com/huypham85/GitForest.git
+   cd GitForest
    ```
 
 2. **Install dependencies**
@@ -146,7 +146,7 @@ Creates NSIS installer and portable EXE in `release/` folder
 ## 📁 Project Structure
 
 ```
-source_tree_clone/
+GitForest/
 ├── electron/
 │   ├── main.mjs          # Electron main process with Git IPC handlers
 │   └── preload.cjs       # Preload script exposing Git API to renderer

@@ -641,11 +641,11 @@ function App() {
     return (
       <div className="app">
         <div className="title-bar">
-          <span className="title-bar__title">GitFlow</span>
+          <span className="title-bar__title">GitForest</span>
         </div>
         <div className="empty-state" style={{ flex: 1 }}>
           <FolderGit2 className="empty-state__icon" />
-          <h2 className="empty-state__title">Welcome to GitFlow</h2>
+          <h2 className="empty-state__title">Welcome to GitForest</h2>
           <p className="empty-state__description">
             A modern, beautiful Git client for managing your repositories.
             Open a repository to get started.
@@ -663,7 +663,7 @@ function App() {
     <div className="app">
       {/* Title Bar */}
       <div className="title-bar">
-        <span className="title-bar__title">{repoInfo?.name || 'GitFlow'}</span>
+        <span className="title-bar__title">{repoInfo?.name || 'GitForest'}</span>
       </div>
 
       <div className="app-layout">

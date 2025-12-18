@@ -1,5 +1,5 @@
 {
-  "name": "source_tree_clone",
+  "name": "gitforest",
   "private": true,
   "version": "1.0.0",
   "description": "A modern Git version control application",
@@ -38,8 +38,8 @@
     "vite": "^7.2.4"
   },
   "build": {
-    "appId": "com.sourcetree.clone",
-    "productName": "GitFlow",
+    "appId": "com.gitforest.app",
+    "productName": "GitForest",
     "directories": {
       "output": "release"
     },
