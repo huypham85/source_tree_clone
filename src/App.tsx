@@ -381,6 +381,36 @@ function App() {
     setLoading(false);
   }, [commitMessage, loadRepoData, showToast]);
 
+  const handleCommitAndPush = useCallback(async () => {
+    if (!commitMessage.trim()) {
+      showToast('Please enter a commit message', 'warning');
+      return;
+    }
+    setLoading(true);
+
+    // First commit
+    const commitResult = await api.commit(commitMessage);
+    if (!commitResult.success) {
+      showToast(commitResult.error || 'Commit failed', 'error');
+      setLoading(false);
+      return;
+    }
+
+    // Then push
+    const pushResult = await api.push();
+    if (pushResult.success) {
+      setCommitMessage('');
+      await loadRepoData();
+      showToast('Commit & Push successful!');
+    } else {
+      // Commit succeeded but push failed
+      setCommitMessage('');
+      await loadRepoData();
+      showToast(pushResult.error || 'Commit succeeded but push failed', 'warning');
+    }
+    setLoading(false);
+  }, [commitMessage, loadRepoData, showToast]);
+
   const handleCheckout = useCallback(async (branch: string) => {
     setLoading(true);
     const result = await api.checkout(branch);
@@ -852,6 +882,13 @@ function App() {
                         disabled={loading || !commitMessage.trim() || getStagedFiles().length === 0}
                       >
                         Commit
+                      </button>
+                      <button
+                        className="commit-btn commit-btn--push"
+                        onClick={handleCommitAndPush}
+                        disabled={loading || !commitMessage.trim() || getStagedFiles().length === 0}
+                      >
+                        Commit & Push
                       </button>
                     </div>
                   </div>

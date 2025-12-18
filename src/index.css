@@ -573,6 +573,14 @@ body {
   transform: none;
 }
 
+.commit-btn--push {
+  background: var(--gradient-success);
+}
+
+.commit-btn--push:hover {
+  box-shadow: 0 0 20px rgba(76, 175, 80, 0.3);
+}
+
 /* History Panel */
 .history-panel {
   flex: 1;
